@@ -13,37 +13,22 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ButtonLoader, PageLoader } from '@/components/shared/LoadingSpinner';
-import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
-import { ArrowRight, AlertCircle, FileText } from 'lucide-react';
+import { ArrowRight, AlertCircle, Building2, FileText, User, Phone } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { Form, QuoteData } from '@/types';
 
 interface WorkApprovalFormPageProps {
   params: Promise<{ id: string }>;
-}
-
-interface QuoteForm extends Form {
-  data: QuoteData;
 }
 
 export default function WorkApprovalFormPage({ params }: WorkApprovalFormPageProps) {
   const { id: projectId } = use(params);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingQuotes, setIsLoadingQuotes] = useState(true);
-  const [quotes, setQuotes] = useState<QuoteForm[]>([]);
-  const [selectedQuote, setSelectedQuote] = useState<QuoteForm | null>(null);
+  const [projectData, setProjectData] = useState<{ name: string; contact?: { name: string; phone?: string; address?: string } } | null>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
   const router = useRouter();
   const supabase = createClient();
 
@@ -56,78 +41,93 @@ export default function WorkApprovalFormPage({ params }: WorkApprovalFormPagePro
   } = useForm<WorkApprovalDataForm>({
     resolver: zodResolver(workApprovalDataSchema),
     defaultValues: {
-      quote_id: '',
-      approved_amount: 0,
+      site_name: '',
+      quote_reference: '',
       start_date: new Date().toISOString().split('T')[0],
-      estimated_end_date: '',
-      terms_accepted: false,
-      special_conditions: '',
-      deposit_required: false,
-      deposit_amount: 0,
-      deposit_paid: false,
+      work_details: '',
+      notes: '',
+      additions: '',
+      contact_name: '',
+      contact_phone: '',
+      infrastructure_declaration: false,
     },
   });
 
-  const depositRequired = watch('deposit_required');
-  const approvedAmount = watch('approved_amount');
+  const infrastructureDeclaration = watch('infrastructure_declaration');
 
-  // Fetch quotes for this project
+  // Fetch project data to pre-fill contact info
   useEffect(() => {
-    const fetchQuotes = async () => {
+    const fetchProject = async () => {
       try {
         const { data, error } = await supabase
-          .from('forms')
-          .select('*')
-          .eq('project_id', projectId)
-          .eq('type', 'quote')
-          .not('signed_at', 'is', null)
-          .order('created_at', { ascending: false });
+          .from('projects')
+          .select('name, contacts(*)')
+          .eq('id', projectId)
+          .single();
 
         if (error) throw error;
-        setQuotes((data || []) as QuoteForm[]);
+
+        const contact = Array.isArray(data.contacts) ? data.contacts[0] : data.contacts;
+        setProjectData({
+          name: data.name,
+          contact: contact,
+        });
+
+        // Pre-fill contact info if available
+        if (contact) {
+          setValue('contact_name', contact.name || '');
+          setValue('contact_phone', contact.phone || '');
+          if (contact.address) {
+            setValue('site_name', contact.address);
+          }
+        }
       } catch (err) {
-        console.error('Error fetching quotes:', err);
+        console.error('Error fetching project:', err);
       } finally {
-        setIsLoadingQuotes(false);
+        setIsLoadingProject(false);
       }
     };
 
-    fetchQuotes();
-  }, [projectId, supabase]);
-
-  const handleQuoteSelect = (quoteId: string) => {
-    const quote = quotes.find((q) => q.id === quoteId);
-    if (quote) {
-      setSelectedQuote(quote);
-      setValue('quote_id', quoteId);
-      setValue('approved_amount', quote.data.total);
-    }
-  };
+    fetchProject();
+  }, [projectId, supabase, setValue]);
 
   const onSubmit = async (data: WorkApprovalDataForm) => {
     setError(null);
     setIsLoading(true);
 
     try {
-      const { error: formError } = await supabase.from('forms').insert({
-        project_id: projectId,
-        type: 'work_approval',
-        data: data,
-      });
+      // Create form and get the ID
+      const { data: form, error: formError } = await supabase
+        .from('forms')
+        .insert({
+          project_id: projectId,
+          type: 'work_approval',
+          data: data,
+        })
+        .select('id')
+        .single();
 
-      if (formError) {
+      if (formError || !form) {
         console.error('Form error:', formError);
         setError('אירעה שגיאה ביצירת הטופס');
         return;
       }
 
       // Update project status to approved
-      await supabase
+      const { error: statusError } = await supabase
         .from('projects')
         .update({ status: 'approved' })
         .eq('id', projectId);
 
-      toast.success('טופס אישור עבודה נוצר בהצלחה');
+      if (statusError) {
+        console.error('Status error:', statusError);
+        // Rollback: Delete the form if status update failed
+        await supabase.from('forms').delete().eq('id', form.id);
+        setError('אירעה שגיאה בעדכון סטטוס הפרויקט');
+        return;
+      }
+
+      toast.success('טופס הזמנת עבודה נוצר בהצלחה');
       router.push(`/projects/${projectId}`);
     } catch (err) {
       console.error('Error:', err);
@@ -137,7 +137,7 @@ export default function WorkApprovalFormPage({ params }: WorkApprovalFormPagePro
     }
   };
 
-  if (isLoadingQuotes) {
+  if (isLoadingProject) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <PageLoader />
@@ -148,8 +148,8 @@ export default function WorkApprovalFormPage({ params }: WorkApprovalFormPagePro
   return (
     <div className="space-y-8">
       <PageHeader
-        title="טופס התחלת עבודה"
-        description="צור טופס אישור להתחלת עבודה"
+        title="הזמנת עבודה / אישור ביצוע"
+        description="טופס אישור תחילת עבודה"
       />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -160,232 +160,174 @@ export default function WorkApprovalFormPage({ params }: WorkApprovalFormPagePro
           </Alert>
         )}
 
-        {/* Quote Selection */}
+        {/* Declaration Banner */}
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="pt-6">
+            <p className="text-sm leading-relaxed">
+              אני הח״מ מאשר/ת כי עברתי עם המבצע על כל הצרכים, הדרישות והיקף העבודה,
+              וקיבלתי הסבר מלא בנוגע לתשתיות הקיימות באתר, לרבות נקודות רגישות, סיכונים אפשריים
+              והנחיות שיש לדעת לפני תחילת הקידוח ו/או ביצוע העבודה.
+            </p>
+            <p className="text-sm font-medium mt-2 text-primary">
+              הובהר לי כי האחריות על מסירת מידע מלא ומדויק בנוגע לתשתיות קיימות חלה עליי.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Site Details */}
         <Card>
           <CardHeader>
-            <CardTitle>בחירת הצעת מחיר</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              פרטי האתר
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {quotes.length === 0 ? (
-              <Alert>
-                <FileText className="h-4 w-4" />
-                <AlertDescription>
-                  אין הצעות מחיר חתומות לפרויקט זה. יש ליצור ולחתום על הצעת מחיר
-                  תחילה.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label>בחר הצעת מחיר</Label>
-                  <Select onValueChange={handleQuoteSelect}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="בחר הצעת מחיר חתומה" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quotes.map((quote) => (
-                        <SelectItem key={quote.id} value={quote.id}>
-                          {formatDate(quote.created_at)} -{' '}
-                          {formatCurrency(quote.data.total)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="site_name">שם האתר / הכתובת *</Label>
+              <Input
+                id="site_name"
+                placeholder="הכנס את כתובת האתר"
+                {...register('site_name')}
+              />
+              {errors.site_name && (
+                <p className="text-sm text-destructive">{errors.site_name.message}</p>
+              )}
+            </div>
 
-                {selectedQuote && (
-                  <div className="p-4 bg-muted rounded-lg space-y-2">
-                    <p className="font-medium">פרטי ההצעה הנבחרת:</p>
-                    <div className="text-sm space-y-1">
-                      <p>
-                        סה״כ:{' '}
-                        <span className="font-medium">
-                          {formatCurrency(selectedQuote.data.total)}
-                        </span>
-                      </p>
-                      <p>
-                        תאריך יצירה:{' '}
-                        <span className="font-medium">
-                          {formatDate(selectedQuote.created_at)}
-                        </span>
-                      </p>
-                      <p>
-                        נחתם על ידי:{' '}
-                        <span className="font-medium">
-                          {selectedQuote.signed_by}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="quote_reference">הצעת מחיר (מספר הפניה)</Label>
+              <Input
+                id="quote_reference"
+                placeholder="מספר הצעת מחיר אם קיים"
+                {...register('quote_reference')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="start_date">תאריך תחילת ביצוע *</Label>
+              <Input
+                id="start_date"
+                type="date"
+                dir="ltr"
+                {...register('start_date')}
+              />
+              {errors.start_date && (
+                <p className="text-sm text-destructive">{errors.start_date.message}</p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Work Details */}
         <Card>
           <CardHeader>
-            <CardTitle>פרטי העבודה</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              פרטי העבודה
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="approved_amount">סכום מאושר</Label>
-                <Input
-                  id="approved_amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  dir="ltr"
-                  {...register('approved_amount', { valueAsNumber: true })}
-                />
-                {errors.approved_amount && (
-                  <p className="text-sm text-destructive">
-                    {errors.approved_amount.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>סכום מאושר (לתצוגה)</Label>
-                <div className="h-10 px-3 py-2 border rounded-md bg-muted flex items-center">
-                  {formatCurrency(approvedAmount || 0)}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="start_date">תאריך התחלה</Label>
-                <Input
-                  id="start_date"
-                  type="date"
-                  dir="ltr"
-                  {...register('start_date')}
-                />
-                {errors.start_date && (
-                  <p className="text-sm text-destructive">
-                    {errors.start_date.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="estimated_end_date">תאריך סיום משוער</Label>
-                <Input
-                  id="estimated_end_date"
-                  type="date"
-                  dir="ltr"
-                  {...register('estimated_end_date')}
-                />
-                {errors.estimated_end_date && (
-                  <p className="text-sm text-destructive">
-                    {errors.estimated_end_date.message}
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="work_details">פירוט העבודה *</Label>
+              <Textarea
+                id="work_details"
+                placeholder="תאר את העבודה שתתבצע..."
+                rows={4}
+                {...register('work_details')}
+              />
+              {errors.work_details && (
+                <p className="text-sm text-destructive">{errors.work_details.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="special_conditions">תנאים מיוחדים</Label>
+              <Label htmlFor="notes">הערות</Label>
               <Textarea
-                id="special_conditions"
-                placeholder="פרט תנאים מיוחדים להסכם..."
-                {...register('special_conditions')}
+                id="notes"
+                placeholder="הערות נוספות..."
+                rows={3}
+                {...register('notes')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="additions">תוספות</Label>
+              <Textarea
+                id="additions"
+                placeholder="תוספות לעבודה..."
+                rows={3}
+                {...register('additions')}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Deposit */}
+        {/* Contact Details */}
         <Card>
           <CardHeader>
-            <CardTitle>מקדמה</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              פרטי איש קשר
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2 space-x-reverse">
-              <Checkbox
-                id="deposit_required"
-                checked={depositRequired}
-                onCheckedChange={(checked) =>
-                  setValue('deposit_required', checked === true)
-                }
-              />
-              <Label htmlFor="deposit_required" className="cursor-pointer">
-                נדרשת מקדמה
-              </Label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="contact_name">שם איש קשר *</Label>
+                <Input
+                  id="contact_name"
+                  placeholder="שם מלא"
+                  {...register('contact_name')}
+                />
+                {errors.contact_name && (
+                  <p className="text-sm text-destructive">{errors.contact_name.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contact_phone">טלפון *</Label>
+                <Input
+                  id="contact_phone"
+                  type="tel"
+                  dir="ltr"
+                  placeholder="050-0000000"
+                  {...register('contact_phone')}
+                />
+                {errors.contact_phone && (
+                  <p className="text-sm text-destructive">{errors.contact_phone.message}</p>
+                )}
+              </div>
             </div>
-
-            {depositRequired && (
-              <>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="deposit_amount">סכום מקדמה</Label>
-                    <Input
-                      id="deposit_amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      dir="ltr"
-                      {...register('deposit_amount', { valueAsNumber: true })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>אחוז מהסכום הכולל</Label>
-                    <div className="h-10 px-3 py-2 border rounded-md bg-muted flex items-center">
-                      {approvedAmount > 0
-                        ? `${((watch('deposit_amount') / approvedAmount) * 100).toFixed(1)}%`
-                        : '0%'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <Checkbox
-                    id="deposit_paid"
-                    checked={watch('deposit_paid')}
-                    onCheckedChange={(checked) =>
-                      setValue('deposit_paid', checked === true)
-                    }
-                  />
-                  <Label htmlFor="deposit_paid" className="cursor-pointer">
-                    המקדמה שולמה
-                  </Label>
-                </div>
-              </>
-            )}
           </CardContent>
         </Card>
 
-        {/* Terms Acceptance */}
+        {/* Declaration Acceptance */}
         <Card>
           <CardHeader>
-            <CardTitle>אישור תנאים</CardTitle>
+            <CardTitle>אישור והסכמה</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-start space-x-2 space-x-reverse">
               <Checkbox
-                id="terms_accepted"
-                checked={watch('terms_accepted')}
+                id="infrastructure_declaration"
+                checked={infrastructureDeclaration}
                 onCheckedChange={(checked) =>
-                  setValue('terms_accepted', checked === true)
+                  setValue('infrastructure_declaration', checked === true)
                 }
               />
               <div>
-                <Label htmlFor="terms_accepted" className="cursor-pointer">
-                  אני מאשר/ת את תנאי העבודה ומסכים/ה להתחיל בביצוע
+                <Label htmlFor="infrastructure_declaration" className="cursor-pointer font-medium">
+                  אני מאשר/ת כי מסרתי מידע מלא ומדויק בנוגע לתשתיות הקיימות באתר
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  החתימה על טופס זה מהווה אישור להתחלת העבודה בהתאם לתנאים
-                  שנקבעו בהצעת המחיר
+                  ידוע לי כי האחריות על מסירת מידע נכון בנוגע לתשתיות, צנרת, חשמל ונקודות רגישות חלה עליי בלבד.
                 </p>
               </div>
             </div>
-            {errors.terms_accepted && (
+            {errors.infrastructure_declaration && (
               <p className="text-sm text-destructive mt-2">
-                {errors.terms_accepted.message}
+                {errors.infrastructure_declaration.message}
               </p>
             )}
           </CardContent>
@@ -395,10 +337,10 @@ export default function WorkApprovalFormPage({ params }: WorkApprovalFormPagePro
         <div className="flex items-center gap-4">
           <Button
             type="submit"
-            disabled={isLoading || !selectedQuote || !watch('terms_accepted')}
+            disabled={isLoading || !infrastructureDeclaration}
           >
             {isLoading && <ButtonLoader />}
-            צור טופס אישור עבודה
+            צור טופס הזמנת עבודה
           </Button>
           <Button type="button" variant="outline" asChild>
             <Link href={`/projects/${projectId}`}>

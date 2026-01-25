@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { ProjectStatus, FormType, FORM_TYPE_LABELS } from '@/types';
+import { ProjectWorkflowBar } from '@/components/projects/ProjectWorkflowBar';
+import { ProjectPhotos } from '@/components/projects/ProjectPhotos';
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>;
@@ -27,6 +29,13 @@ interface ProjectPageProps {
 async function getProject(id: string) {
   const supabase = await createClient();
 
+  // Get current user for ownership verification
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return null;
+  }
+
+  // Get project with ownership verification
   const { data: project, error } = await supabase
     .from('projects')
     .select(`
@@ -35,6 +44,7 @@ async function getProject(id: string) {
       forms (*)
     `)
     .eq('id', id)
+    .eq('user_id', user.id)
     .single();
 
   if (error || !project) {
@@ -52,7 +62,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     notFound();
   }
 
-  const contact = project.contacts;
+  const contacts = project.contacts;
+  const contact = Array.isArray(contacts) ? contacts[0] : contacts;
   const forms = project.forms || [];
 
   return (
@@ -72,6 +83,13 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           </div>
         }
       />
+
+      {/* Workflow Progress */}
+      <Card>
+        <CardContent className="pt-6">
+          <ProjectWorkflowBar forms={forms} projectId={project.id} />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
@@ -134,6 +152,9 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               )}
             </CardContent>
           </Card>
+
+          {/* Photos */}
+          <ProjectPhotos projectId={project.id} />
         </div>
 
         {/* Sidebar */}

@@ -1,6 +1,24 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
+import { z } from 'zod';
+
+// Validation schema for ratings (completion forms)
+const ratingsSchema = z.object({
+  satisfaction_overall: z.number().min(1).max(5),
+  satisfaction_site_conduct: z.number().min(1).max(5),
+  satisfaction_work_quality: z.number().min(1).max(5),
+  satisfaction_appearance: z.number().min(1).max(5),
+  satisfaction_worker_behavior: z.number().min(1).max(5),
+}).optional();
+
+// Validation schema for signature submission
+const signatureSchema = z.object({
+  signerName: z.string().min(2, 'Name too short').max(100, 'Name too long'),
+  signatureData: z.string().min(100, 'Invalid signature').startsWith('data:image/', 'Invalid signature format'),
+  ratings: ratingsSchema,
+  feedbackNotes: z.string().max(1000).optional(),
+});
 
 // GET - Validate token and return form data
 export async function GET(
@@ -38,12 +56,16 @@ export async function GET(
 
     const form = tokenData.forms;
 
+    // Handle contacts being an array
+    const contacts = form.projects?.contacts;
+    const contactName = Array.isArray(contacts) ? contacts[0]?.name : contacts?.name;
+
     return NextResponse.json({
       id: form.id,
       type: form.type,
       data: form.data,
       project_name: form.projects?.name || '',
-      contact_name: form.projects?.contacts?.name || '',
+      contact_name: contactName || '',
     });
   } catch (error) {
     console.error('Error:', error);
@@ -83,20 +105,33 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { signerName, signatureData } = body;
 
-    if (!signerName || !signatureData) {
+    // Validate input
+    const validation = signatureSchema.safeParse(body);
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Invalid data', details: validation.error.issues },
         { status: 400 }
       );
     }
 
+    const { signerName, signatureData, ratings, feedbackNotes } = validation.data;
+
     const form = tokenData.forms;
     const formId = form.id;
 
+    // If completion form and ratings provided, merge them into form data
+    let updatedFormData = form.data;
+    if (form.type === 'completion' && ratings) {
+      updatedFormData = {
+        ...form.data,
+        ...ratings,
+        feedback_notes: feedbackNotes || form.data.feedback_notes || '',
+      };
+    }
+
     // Create hash of form data for integrity
-    const formDataJson = JSON.stringify(form.data, Object.keys(form.data).sort());
+    const formDataJson = JSON.stringify(updatedFormData, Object.keys(updatedFormData).sort());
     const signatureHash = createHash('sha256').update(formDataJson).digest('hex');
 
     // Upload signature image to Supabase Storage
@@ -126,17 +161,24 @@ export async function POST(
 
     const signatureUrl = urlData.publicUrl;
 
-    // Update form with signature
+    // Update form with signature and potentially updated data (for completion forms with ratings)
+    const updatePayload: Record<string, unknown> = {
+      signature_url: signatureUrl,
+      signature_hash: signatureHash,
+      signed_at: new Date().toISOString(),
+      signed_by: signerName,
+      signer_ip: ip,
+      signer_user_agent: userAgent,
+    };
+
+    // Include updated form data if ratings were submitted
+    if (form.type === 'completion' && ratings) {
+      updatePayload.data = updatedFormData;
+    }
+
     const { error: updateError } = await adminClient
       .from('forms')
-      .update({
-        signature_url: signatureUrl,
-        signature_hash: signatureHash,
-        signed_at: new Date().toISOString(),
-        signed_by: signerName,
-        signer_ip: ip,
-        signer_user_agent: userAgent,
-      })
+      .update(updatePayload)
       .eq('id', formId);
 
     if (updateError) {

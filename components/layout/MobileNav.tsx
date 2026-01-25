@@ -1,7 +1,8 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -9,10 +10,17 @@ import {
   Settings,
   LogOut,
   FileSignature,
+  Menu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
 const navItems = [
   {
@@ -33,57 +41,106 @@ const navItems = [
 ];
 
 export function MobileNav() {
+  const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
 
+  // Handle back button when sheet is open
+  useEffect(() => {
+    if (open) {
+      // Push a state when sheet opens so back button can close it
+      window.history.pushState({ sheetOpen: true }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        // When back button is pressed, close the sheet
+        setOpen(false);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [open]);
+
+  // When sheet closes (not via back button), clean up history
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    if (!newOpen && open) {
+      // Sheet is closing, go back in history if we pushed a state
+      if (window.history.state?.sheetOpen) {
+        window.history.back();
+      }
+    }
+    setOpen(newOpen);
+  }, [open]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
+    handleOpenChange(false);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="flex items-center gap-2 h-16 px-6 border-b">
-        <FileSignature className="h-8 w-8 text-primary" />
-        <span className="text-xl font-bold">ProjectSign</span>
-      </div>
+    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b">
+      <div className="flex items-center justify-between h-14 px-4">
+        <Link href="/" className="flex items-center gap-2">
+          <FileSignature className="h-6 w-6 text-primary" />
+          <span className="text-lg font-bold">ProjectSign</span>
+        </Link>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 py-4 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
+        <Sheet open={open} onOpenChange={handleOpenChange}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <Menu className="h-6 w-6" />
+              <span className="sr-only">פתח תפריט</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-72">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <FileSignature className="h-6 w-6 text-primary" />
+                <span>ProjectSign</span>
+              </SheetTitle>
+            </SheetHeader>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+            <nav className="flex flex-col gap-2 mt-6">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href;
 
-      {/* Logout */}
-      <div className="p-4 border-t">
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-3"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-5 w-5" />
-          התנתק
-        </Button>
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => handleOpenChange(false)}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="absolute bottom-6 left-4 right-4">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-5 w-5" />
+                התנתק
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

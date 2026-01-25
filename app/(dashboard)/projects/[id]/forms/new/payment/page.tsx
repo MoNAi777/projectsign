@@ -105,8 +105,7 @@ export default function PaymentFormPage({ params }: PaymentFormPageProps) {
     if (completion) {
       setSelectedCompletion(completion);
       setValue('completion_id', completionId);
-      setValue('amount_due', completion.data.final_amount);
-      setValue('amount_paid', completion.data.final_amount);
+      // Amount needs to be entered manually since completion form no longer has financial data
     }
   };
 
@@ -197,8 +196,7 @@ export default function PaymentFormPage({ params }: PaymentFormPageProps) {
                     <SelectContent>
                       {completions.map((completion) => (
                         <SelectItem key={completion.id} value={completion.id}>
-                          {formatDate(completion.created_at)} -{' '}
-                          {formatCurrency(completion.data.final_amount)}
+                          {formatDate(completion.data.work_date)} - {completion.data.site_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -210,21 +208,21 @@ export default function PaymentFormPage({ params }: PaymentFormPageProps) {
                     <p className="font-medium">פרטי אישור הסיום:</p>
                     <div className="text-sm space-y-1">
                       <p>
-                        סכום סופי:{' '}
+                        אתר / כתובת:{' '}
                         <span className="font-medium">
-                          {formatCurrency(selectedCompletion.data.final_amount)}
+                          {selectedCompletion.data.site_name}
                         </span>
                       </p>
                       <p>
-                        תאריך סיום:{' '}
+                        תאריך ביצוע:{' '}
                         <span className="font-medium">
-                          {formatDate(selectedCompletion.data.actual_completion_date)}
+                          {formatDate(selectedCompletion.data.work_date)}
                         </span>
                       </p>
                       <p>
-                        סיכום:{' '}
+                        שביעות רצון כללית:{' '}
                         <span className="font-medium">
-                          {selectedCompletion.data.work_summary.substring(0, 100)}...
+                          {selectedCompletion.data.satisfaction_overall}/5
                         </span>
                       </p>
                     </div>

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Israeli phone number regex (supports formats: 0501234567, 050-1234567, 050-123-4567)
+const israeliPhoneRegex = /^0(5[0-9]|[2-4]|[8-9]|7[0-9])-?\d{3}-?\d{4}$/;
+
 // Quote Item Schema
 export const quoteItemSchema = z.object({
   id: z.string(),
@@ -23,32 +26,36 @@ export const quoteDataSchema = z.object({
   warranty_terms: z.string().optional(),
 });
 
-// Work Approval Schema
+// Work Approval Schema (הזמנת עבודה / אישור ביצוע)
 export const workApprovalDataSchema = z.object({
-  quote_id: z.string(),
-  approved_amount: z.number().positive('סכום חייב להיות חיובי'),
-  start_date: z.string(),
-  estimated_end_date: z.string(),
-  terms_accepted: z.boolean(),
-  special_conditions: z.string().optional(),
-  deposit_required: z.boolean(),
-  deposit_amount: z.number().min(0),
-  deposit_paid: z.boolean(),
-  deposit_paid_at: z.string().optional(),
+  site_name: z.string().min(1, 'שם האתר / כתובת נדרש'),
+  quote_reference: z.string().optional(),
+  start_date: z.string().min(1, 'תאריך תחילת ביצוע נדרש'),
+  work_details: z.string().min(1, 'פירוט העבודה נדרש'),
+  notes: z.string().optional(),
+  additions: z.string().optional(),
+  contact_name: z.string().min(1, 'שם איש קשר נדרש'),
+  contact_phone: z.string().min(1, 'טלפון נדרש').regex(israeliPhoneRegex, 'מספר טלפון לא תקין'),
+  infrastructure_declaration: z.boolean().refine(val => val === true, {
+    message: 'יש לאשר את ההצהרה לגבי תשתיות',
+  }),
 });
 
-// Completion Schema
+// Completion Schema (טופס הגשת עבודה ושביעות רצון לקוח)
 export const completionDataSchema = z.object({
-  work_approval_id: z.string(),
-  actual_completion_date: z.string(),
-  work_summary: z.string().min(1, 'סיכום העבודה נדרש'),
-  deviations_from_quote: z.string().optional(),
-  additional_charges: z.number(),
-  additional_charges_reason: z.string().optional(),
-  final_amount: z.number().positive('סכום סופי חייב להיות חיובי'),
-  image_ids: z.array(z.string()).optional(),
-  client_notes: z.string().optional(),
-  warranty_start_date: z.string(),
+  site_name: z.string().min(1, 'שם האתר / כתובת נדרש'),
+  order_number: z.string().optional(),
+  work_date: z.string().min(1, 'תאריך ביצוע העבודה נדרש'),
+  // Satisfaction ratings (1-5)
+  satisfaction_overall: z.number().min(1).max(5),
+  satisfaction_site_conduct: z.number().min(1).max(5),
+  satisfaction_work_quality: z.number().min(1).max(5),
+  satisfaction_appearance: z.number().min(1).max(5),
+  satisfaction_worker_behavior: z.number().min(1).max(5),
+  feedback_notes: z.string().optional(),
+  legal_disclaimer_accepted: z.boolean().refine(val => val === true, {
+    message: 'יש לאשר את סעיף ההגנה והיעדר טענות עתידיות',
+  }),
 });
 
 // Payment Schema

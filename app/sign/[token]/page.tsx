@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { SignatureCanvas } from '@/components/signature/SignatureCanvas';
@@ -18,6 +19,7 @@ import {
   DollarSign,
   FileText,
   CreditCard,
+  ExternalLink,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import {
@@ -52,6 +54,26 @@ export default function SignPage({ params }: SignPageProps) {
   const [signerName, setSignerName] = useState('');
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isPWA, setIsPWA] = useState(false);
+
+  // Star ratings state for completion forms
+  const [ratings, setRatings] = useState({
+    satisfaction_overall: 5,
+    satisfaction_site_conduct: 5,
+    satisfaction_work_quality: 5,
+    satisfaction_appearance: 5,
+    satisfaction_worker_behavior: 5,
+  });
+  const [feedbackNotes, setFeedbackNotes] = useState('');
+
+  // Detect if running in PWA/standalone mode
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (isStandalone) {
+      setIsPWA(true);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -90,13 +112,21 @@ export default function SignPage({ params }: SignPageProps) {
     setIsSubmitting(true);
 
     try {
+      // Include ratings if this is a completion form
+      const submitData: Record<string, unknown> = {
+        signerName,
+        signatureData,
+      };
+
+      if (formData?.type === 'completion') {
+        submitData.ratings = ratings;
+        submitData.feedbackNotes = feedbackNotes;
+      }
+
       const response = await fetch(`/api/sign/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          signerName,
-          signatureData,
-        }),
+        body: JSON.stringify(submitData),
       });
 
       const data = await response.json();
@@ -118,6 +148,41 @@ export default function SignPage({ params }: SignPageProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/50">
         <PageLoader />
+      </div>
+    );
+  }
+
+  // Show message if opened in PWA mode
+  if (isPWA) {
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/50 p-4">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <ExternalLink className="h-16 w-16 text-primary" />
+            </div>
+            <CardTitle className="text-2xl">פתח בדפדפן</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">
+              כדי לחתום על המסמך, יש לפתוח את הקישור בדפדפן רגיל.
+            </p>
+            <Button
+              onClick={() => {
+                // Try to open in external browser
+                window.open(currentUrl, '_system');
+              }}
+              className="w-full"
+            >
+              <ExternalLink className="h-4 w-4 ml-2" />
+              פתח בדפדפן
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              או העתק את הקישור ופתח אותו בדפדפן Chrome/Safari
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -241,129 +306,276 @@ export default function SignPage({ params }: SignPageProps) {
 
   // Render Work Approval Content
   const renderWorkApprovalContent = (data: WorkApprovalData) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          פרטי אישור העבודה
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4">
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">סכום מאושר:</span>
-            <span className="font-bold text-lg" dir="ltr">{formatCurrency(data.approved_amount)}</span>
-          </div>
-
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">תאריך התחלה:</span>
-            <span className="font-medium">{formatDate(data.start_date)}</span>
-          </div>
-
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">תאריך סיום משוער:</span>
-            <span className="font-medium">{formatDate(data.estimated_end_date)}</span>
-          </div>
-
-          {data.deposit_required && (
-            <>
-              <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">מקדמה נדרשת:</span>
-                <span className="font-medium" dir="ltr">{formatCurrency(data.deposit_amount)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">סטטוס מקדמה:</span>
-                <span className={`font-medium ${data.deposit_paid ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {data.deposit_paid ? 'שולמה' : 'טרם שולמה'}
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {data.special_conditions && (
-          <div className="pt-4">
-            <p className="text-sm font-medium">תנאים מיוחדים:</p>
-            <p className="text-sm text-muted-foreground">{data.special_conditions}</p>
-          </div>
-        )}
-
-        <div className="pt-4 p-4 bg-muted rounded-lg">
-          <p className="text-sm">
-            בחתימתי על מסמך זה אני מאשר/ת את תחילת העבודה בהתאם לתנאים שנקבעו בהצעת המחיר.
+    <>
+      {/* Declaration Banner */}
+      <Card className="border-primary/50 bg-primary/5">
+        <CardContent className="pt-6">
+          <p className="text-sm leading-relaxed">
+            אני הח״מ מאשר/ת כי עברתי עם המבצע על כל הצרכים, הדרישות והיקף העבודה,
+            וקיבלתי הסבר מלא בנוגע לתשתיות הקיימות באתר, לרבות נקודות רגישות, סיכונים אפשריים
+            והנחיות שיש לדעת לפני תחילת הקידוח ו/או ביצוע העבודה.
           </p>
-        </div>
-      </CardContent>
-    </Card>
+          <p className="text-sm font-medium mt-2 text-primary">
+            הובהר לי כי האחריות על מסירת מידע מלא ומדויק בנוגע לתשתיות קיימות חלה עליי.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            פרטי הזמנת העבודה
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4">
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">שם האתר / כתובת:</span>
+              <span className="font-medium">{data.site_name}</span>
+            </div>
+
+            {data.quote_reference && (
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">הצעת מחיר:</span>
+                <span className="font-medium">{data.quote_reference}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">תאריך תחילת ביצוע:</span>
+              <span className="font-medium">{formatDate(data.start_date)}</span>
+            </div>
+
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">איש קשר:</span>
+              <span className="font-medium">{data.contact_name}</span>
+            </div>
+
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">טלפון:</span>
+              <span className="font-medium" dir="ltr">{data.contact_phone}</span>
+            </div>
+          </div>
+
+          <div className="pt-4">
+            <p className="text-sm font-medium">פירוט העבודה:</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{data.work_details}</p>
+          </div>
+
+          {data.notes && (
+            <div>
+              <p className="text-sm font-medium">הערות:</p>
+              <p className="text-sm text-muted-foreground">{data.notes}</p>
+            </div>
+          )}
+
+          {data.additions && (
+            <div>
+              <p className="text-sm font-medium">תוספות:</p>
+              <p className="text-sm text-muted-foreground">{data.additions}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
+
+  // Helper for rendering static stars (for display)
+  const renderStars = (rating: number) => {
+    return (
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <span
+            key={star}
+            className={star <= rating ? 'text-yellow-400' : 'text-gray-300'}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  // Interactive star rating component
+  const InteractiveStars = ({
+    value,
+    onChange,
+    label,
+  }: {
+    value: number;
+    onChange: (value: number) => void;
+    label: string;
+  }) => {
+    const [hoverValue, setHoverValue] = useState(0);
+
+    return (
+      <div className="flex justify-between items-center py-3 border-b">
+        <span className="text-sm">{label}</span>
+        <div className="flex gap-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              onClick={() => onChange(star)}
+              onMouseEnter={() => setHoverValue(star)}
+              onMouseLeave={() => setHoverValue(0)}
+              className={`text-2xl transition-colors cursor-pointer ${
+                star <= (hoverValue || value)
+                  ? 'text-yellow-400'
+                  : 'text-gray-300 hover:text-yellow-200'
+              }`}
+            >
+              ★
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   // Render Completion Content
   const renderCompletionContent = (data: CompletionData) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <CheckCircle className="h-5 w-5" />
-          פרטי סיום העבודה
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4">
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">תאריך סיום:</span>
-            <span className="font-medium">{formatDate(data.actual_completion_date)}</span>
-          </div>
+    <>
+      {/* Company Header */}
+      <Card className="border-primary">
+        <CardContent className="pt-6 text-center">
+          <h2 className="text-2xl font-bold text-primary">Daniel – Cut & Drill</h2>
+          <p className="text-muted-foreground mt-1">עיצובים מיוחדים באבן וקרמיקה | 054-7980580</p>
+          <Separator className="my-4" />
+          <h3 className="text-lg font-semibold">טופס הגשת עבודה ושביעות רצון לקוח</h3>
+        </CardContent>
+      </Card>
 
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">תאריך תחילת אחריות:</span>
-            <span className="font-medium">{formatDate(data.warranty_start_date)}</span>
-          </div>
-
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">סכום סופי:</span>
-            <span className="font-bold text-lg text-primary" dir="ltr">{formatCurrency(data.final_amount)}</span>
-          </div>
-
-          {data.additional_charges > 0 && (
+      {/* Order Details */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            פרטי ההזמנה
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4">
             <div className="flex justify-between py-2 border-b">
-              <span className="text-muted-foreground">חיובים נוספים:</span>
-              <span className="font-medium" dir="ltr">{formatCurrency(data.additional_charges)}</span>
+              <span className="text-muted-foreground">שם אתר / כתובת:</span>
+              <span className="font-medium">{data.site_name}</span>
             </div>
-          )}
-        </div>
 
-        <div className="pt-4">
-          <p className="text-sm font-medium">סיכום העבודה:</p>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{data.work_summary}</p>
-        </div>
+            {data.order_number && (
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">מס׳ הזמנה (אם קיים):</span>
+                <span className="font-medium">{data.order_number}</span>
+              </div>
+            )}
 
-        {data.deviations_from_quote && (
-          <div>
-            <p className="text-sm font-medium">סטיות מהצעת המחיר:</p>
-            <p className="text-sm text-muted-foreground">{data.deviations_from_quote}</p>
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">תאריך ביצוע העבודה:</span>
+              <span className="font-medium">{formatDate(data.work_date)}</span>
+            </div>
           </div>
-        )}
+        </CardContent>
+      </Card>
 
-        {data.additional_charges_reason && (
-          <div>
-            <p className="text-sm font-medium">סיבת חיובים נוספים:</p>
-            <p className="text-sm text-muted-foreground">{data.additional_charges_reason}</p>
-          </div>
-        )}
-
-        {data.client_notes && (
-          <div>
-            <p className="text-sm font-medium">הערות:</p>
-            <p className="text-sm text-muted-foreground">{data.client_notes}</p>
-          </div>
-        )}
-
-        <div className="pt-4 p-4 bg-muted rounded-lg">
-          <p className="text-sm">
-            בחתימתי על מסמך זה אני מאשר/ת את סיום העבודה ואת הסכום הסופי לתשלום.
+      {/* Customer Declaration */}
+      <Card className="border-green-200 bg-green-50">
+        <CardHeader>
+          <CardTitle className="text-lg text-green-800">הצהרת הלקוח</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-relaxed text-green-800">
+            אני החתום/ה מטה מאשר/ת כי העבודה בוצעה והוגשה בהתאם להזמנה, להסכמות ולתנאי האתר,
+            ונמסרה לשביעות רצוני המלאה במועד סיום העבודה.
           </p>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Interactive Satisfaction Rating */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">דירוג שביעות רצון</CardTitle>
+          <p className="text-sm text-muted-foreground">לחץ על הכוכבים כדי לדרג (1 = לא מרוצה כלל | 5 = מרוצה מאוד)</p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1">
+            <InteractiveStars
+              value={ratings.satisfaction_overall}
+              onChange={(value) => setRatings((prev) => ({ ...prev, satisfaction_overall: value }))}
+              label="שביעות רצון כללית"
+            />
+            <InteractiveStars
+              value={ratings.satisfaction_site_conduct}
+              onChange={(value) => setRatings((prev) => ({ ...prev, satisfaction_site_conduct: value }))}
+              label="התנהלות באתר העבודה"
+            />
+            <InteractiveStars
+              value={ratings.satisfaction_work_quality}
+              onChange={(value) => setRatings((prev) => ({ ...prev, satisfaction_work_quality: value }))}
+              label="איכות ביצוע העבודה"
+            />
+            <InteractiveStars
+              value={ratings.satisfaction_appearance}
+              onChange={(value) => setRatings((prev) => ({ ...prev, satisfaction_appearance: value }))}
+              label="נראות וגימור העבודה"
+            />
+            <InteractiveStars
+              value={ratings.satisfaction_worker_behavior}
+              onChange={(value) => setRatings((prev) => ({ ...prev, satisfaction_worker_behavior: value }))}
+              label="התנהגות איש הביצוע"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Feedback Notes Input */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">הערות / משוב (אופציונלי)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={feedbackNotes}
+            onChange={(e) => setFeedbackNotes(e.target.value)}
+            placeholder="ספר לנו על החוויה שלך..."
+            rows={3}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Legal Disclaimer */}
+      <Card className="border-amber-200">
+        <CardHeader>
+          <CardTitle className="text-lg text-amber-800">סעיף הגנה והיעדר טענות עתידיות</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            הלקוח מצהיר כי בדק את העבודה במועד מסירתה, כי לא נמצאו ליקויים גלויים לעין,
+            וכי ידוע לו שמדובר בעבודות באבן, קרמיקה, שיש ופורצלן אשר מטבעם עלולים לכלול
+            שברים נסתרים, מאמצים פנימיים או רגישויות חומריות שאינן ניתנות לזיהוי מראש.
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            לאחר חתימה על טופס זה, הלקוח מוותר על כל טענה, דרישה או תביעה עתידית בגין
+            סדקים, שברים או נזקים הנובעים מתכונות החומר, תשתיות קיימות, עבודות קודמות,
+            התקנה או שימוש שבוצעו על ידי צד ג׳.
+          </p>
+          <p className="text-sm font-medium text-amber-800">
+            אחריות החברה חלה אך ורק על ביצוע העבודה כפי שנמסרה במועד סיומה.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Customer Approval */}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="text-lg text-blue-800">אישור הלקוח</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-relaxed text-blue-800">
+            אני מאשר/ת כי קראתי, הבנתי והסכמתי לכל האמור לעיל, וכי אין לי ולא יהיו לי טענות נוספות לאחר מועד החתימה.
+          </p>
+        </CardContent>
+      </Card>
+    </>
   );
 
   // Render Payment Content

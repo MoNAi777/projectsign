@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import { Plus, FolderKanban } from 'lucide-react';
-import { ProjectCard } from '@/components/projects/ProjectCard';
+import { ProjectsFilter } from '@/components/projects/ProjectsFilter';
 import { EmptyState } from '@/components/shared/EmptyState';
 
 async function getProjects() {
@@ -63,15 +63,7 @@ export default async function ProjectsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              contact={project.contacts}
-            />
-          ))}
-        </div>
+        <ProjectsFilter projects={projects} />
       )}
     </div>
   );

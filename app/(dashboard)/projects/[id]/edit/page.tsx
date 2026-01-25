@@ -51,10 +51,19 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
 
   useEffect(() => {
     const fetchProject = async () => {
+      // Get current user for ownership verification
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      // Fetch project with ownership verification
       const { data: project, error } = await supabase
         .from('projects')
         .select(`*, contacts (*)`)
         .eq('id', id)
+        .eq('user_id', user.id)
         .single();
 
       if (error || !project) {

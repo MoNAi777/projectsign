@@ -36,6 +36,18 @@ export function SendFormButton({
   const [signingUrl, setSigningUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Reset state when dialog closes
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      // Reset state when dialog closes
+      setSigningUrl(null);
+      setCopied(false);
+      setEmail(contactEmail || '');
+      setPhone(contactPhone || '');
+    }
+  };
+
   const generateLink = async () => {
     setIsLoading(true);
     try {
@@ -82,7 +94,7 @@ export function SendFormButton({
       }
 
       toast.success('האימייל נשלח בהצלחה');
-      setOpen(false);
+      handleOpenChange(false);
     } catch (error) {
       console.error('Error:', error);
       toast.error('שגיאה בשליחת האימייל');
@@ -112,7 +124,7 @@ export function SendFormButton({
       }
 
       toast.success('הודעת SMS נשלחה בהצלחה');
-      setOpen(false);
+      handleOpenChange(false);
     } catch (error) {
       console.error('Error:', error);
       toast.error('שגיאה בשליחת SMS');
@@ -140,7 +152,7 @@ export function SendFormButton({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full">
           <Send className="h-4 w-4 ml-2" />
@@ -234,7 +246,7 @@ export function SendFormButton({
         </Tabs>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             סגור
           </Button>
         </DialogFooter>

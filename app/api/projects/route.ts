@@ -1,5 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
+
+// Validation schema for project creation
+const createProjectSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200, 'Name too long'),
+  description: z.string().max(2000, 'Description too long').optional().nullable(),
+});
 
 export async function GET() {
   try {
@@ -41,11 +48,17 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    // Validate input
+    const validation = createProjectSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: 'Invalid data', details: validation.error.issues },
+        { status: 400 }
+      );
     }
+
+    const { name, description } = validation.data;
 
     const { data: project, error } = await supabase
       .from('projects')

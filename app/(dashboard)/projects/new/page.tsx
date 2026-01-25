@@ -92,7 +92,10 @@ export default function NewProjectPage() {
 
         if (contactError) {
           console.error('Contact error:', contactError);
-          // Don't fail the whole operation, project was created
+          // Rollback: Delete the project if contact creation failed
+          await supabase.from('projects').delete().eq('id', project.id);
+          setError('אירעה שגיאה ביצירת פרטי הלקוח, נסה שנית');
+          return;
         }
       }
 

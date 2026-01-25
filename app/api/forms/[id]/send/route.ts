@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { sendFormEmail } from '@/lib/email';
+import { sendFormSMS } from '@/lib/sms';
 
 const SIGNING_TOKEN_EXPIRY_HOURS = 48;
 
@@ -65,7 +67,10 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create signing token' }, { status: 500 });
     }
 
-    const signingUrl = `${process.env.NEXT_PUBLIC_APP_URL}/sign/${token}`;
+    // Get the base URL - use environment variable or construct from request headers
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ||
+      `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`).trim();
+    const signingUrl = `${baseUrl}/sign/${token}`.replace(/\s+/g, '');
 
     // Handle different sending methods
     if (method === 'link') {
@@ -73,25 +78,59 @@ export async function POST(
     }
 
     if (method === 'email' && email) {
-      // TODO: Implement email sending with Resend
-      // For now, just return the URL
+      // Get contact name for email greeting
+      const contacts = form.projects?.contacts;
+      const contact = Array.isArray(contacts) ? contacts[0] : contacts;
+      const contactName = contact?.name;
+
+      // Send email via Resend
+      const emailResult = await sendFormEmail({
+        to: email,
+        formType: form.type,
+        projectName: form.projects?.name || 'פרויקט',
+        signingUrl,
+        contactName,
+      });
+
+      if (!emailResult.success) {
+        console.error('Email send failed:', emailResult.error);
+        return NextResponse.json(
+          { error: 'Failed to send email', signingUrl },
+          { status: 500 }
+        );
+      }
+
       await supabase
         .from('forms')
         .update({ sent_at: new Date().toISOString(), sent_via: 'email' })
         .eq('id', formId);
 
-      return NextResponse.json({ signingUrl, message: 'Email sent' });
+      return NextResponse.json({ signingUrl, message: 'Email sent successfully' });
     }
 
     if (method === 'sms' && phone) {
-      // TODO: Implement SMS sending with Twilio
-      // For now, just return the URL
+      // Send SMS via Twilio
+      const smsResult = await sendFormSMS({
+        to: phone,
+        formType: form.type,
+        projectName: form.projects?.name || 'פרויקט',
+        signingUrl,
+      });
+
+      if (!smsResult.success) {
+        console.error('SMS send failed:', smsResult.error);
+        return NextResponse.json(
+          { error: 'Failed to send SMS', signingUrl },
+          { status: 500 }
+        );
+      }
+
       await supabase
         .from('forms')
         .update({ sent_at: new Date().toISOString(), sent_via: 'sms' })
         .eq('id', formId);
 
-      return NextResponse.json({ signingUrl, message: 'SMS sent' });
+      return NextResponse.json({ signingUrl, message: 'SMS sent successfully' });
     }
 
     return NextResponse.json({ signingUrl });

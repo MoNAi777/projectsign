@@ -103,29 +103,28 @@ export interface QuoteData {
 }
 
 export interface WorkApprovalData {
-  quote_id: string;
-  approved_amount: number;
+  site_name: string;
+  quote_reference?: string;
   start_date: string;
-  estimated_end_date: string;
-  terms_accepted: boolean;
-  special_conditions?: string;
-  deposit_required: boolean;
-  deposit_amount: number;
-  deposit_paid: boolean;
-  deposit_paid_at?: string;
+  work_details: string;
+  notes?: string;
+  additions?: string;
+  contact_name: string;
+  contact_phone: string;
+  infrastructure_declaration: boolean;
 }
 
 export interface CompletionData {
-  work_approval_id: string;
-  actual_completion_date: string;
-  work_summary: string;
-  deviations_from_quote?: string;
-  additional_charges: number;
-  additional_charges_reason?: string;
-  final_amount: number;
-  image_ids?: string[];
-  client_notes?: string;
-  warranty_start_date: string;
+  site_name: string;
+  order_number?: string;
+  work_date: string;
+  satisfaction_overall: number;
+  satisfaction_site_conduct: number;
+  satisfaction_work_quality: number;
+  satisfaction_appearance: number;
+  satisfaction_worker_behavior: number;
+  feedback_notes?: string;
+  legal_disclaimer_accepted: boolean;
 }
 
 export interface PaymentData {
@@ -183,8 +182,8 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
 
 export const FORM_TYPE_LABELS: Record<FormType, string> = {
   quote: 'הצעת מחיר',
-  work_approval: 'אישור עבודה',
-  completion: 'אישור סיום',
+  work_approval: 'הזמנת עבודה / אישור ביצוע',
+  completion: 'טופס הגשת עבודה ושביעות רצון',
   payment: 'אישור תשלום',
 };
 
