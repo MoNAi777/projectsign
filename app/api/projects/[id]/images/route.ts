@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 
 export async function GET(
@@ -92,9 +93,12 @@ export async function POST(
     const ext = file.name.split('.').pop();
     const fileName = `${projectId}/${Date.now()}.${ext}`;
 
+    // Use admin client for storage operations (bypasses RLS)
+    const adminClient = createAdminClient();
+
     // Upload to Supabase Storage
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await adminClient.storage
       .from('images')
       .upload(fileName, buffer, {
         contentType: file.type,
@@ -107,7 +111,7 @@ export async function POST(
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = adminClient.storage
       .from('images')
       .getPublicUrl(fileName);
 
@@ -174,9 +178,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Image not found' }, { status: 404 });
     }
 
-    // Delete from storage
+    // Delete from storage using admin client
     if (image.storage_path) {
-      await supabase.storage.from('images').remove([image.storage_path]);
+      const adminClient = createAdminClient();
+      await adminClient.storage.from('images').remove([image.storage_path]);
     }
 
     // Delete from database
