@@ -22,11 +22,26 @@ import {
 // Disable hyphenation callback to prevent errors
 Font.registerHyphenationCallback((word) => [word]);
 
-// Styles - using Helvetica (built-in font) for reliability
+// Register Noto Sans Hebrew font for Hebrew support
+Font.register({
+  family: 'NotoSansHebrew',
+  fonts: [
+    {
+      src: 'https://fonts.gstatic.com/s/notosanshebrew/v43/or3HQ7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaeNKYZC0sqk3xXGiXd4qtpw.ttf',
+      fontWeight: 'normal',
+    },
+    {
+      src: 'https://fonts.gstatic.com/s/notosanshebrew/v43/or3HQ7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaeNKYZC0sqk3xXGiX1YqtpQ.ttf',
+      fontWeight: 'bold',
+    },
+  ],
+});
+
+// Styles - using Noto Sans Hebrew for Hebrew support
 const styles = StyleSheet.create({
   page: {
     padding: 40,
-    fontFamily: 'Helvetica',
+    fontFamily: 'NotoSansHebrew',
     fontSize: 11,
   },
   header: {
